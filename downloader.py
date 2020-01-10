@@ -43,57 +43,100 @@ import requests
 threadLock = threading.Lock()
 threads_failed = 0
 
+"""
+Purpose:
+Write from start byte to end byte in the outfile from the
+file present at the address url. This is the main function
+for each thread and the main thread ensures non overlapping
+of the start and the end byte.
+
+Parameters:
+start - starting byte to request from the url
+end - the last byte to request from the url
+outfile - the file to write the bytes between start-end
+url - the address of the file to be downloaded
+
+Returns:
+If successful, writes to the outfile and returns void
+else is caught in an except clause, where global counter
+threads_failed is incremented and thread returns 
+unsuccessful in its execution
+"""
+
 
 def thread_handler(start, end, outfile, url):
+    # the request header specifying the bytes required
     headers = {'Range': 'bytes=' + str(start) + '-' + str(end)}
     global threadLock
     global threads_failed
     try:
-        r = requests.get(url, headers=headers, stream=True, timeout=10)
-        content = r.content
+        r = requests.get(url, headers=headers, stream=True, timeout=60)
+        content = r.content  # stores the requested bytes, can be timed out
     except Exception:
         with threadLock:
             threads_failed += 1
         return
-    f = open(outfile, 'r+b')
+    f = open(outfile, 'r+b')  # write to the outfile at start offset
     f.seek(start)
     f.write(content)
     f.close()
+
+"""
+Purpose:
+Main thread that determines the size of the file to be downloaded.
+Divides the file into equal parts (= number_of_threads) to be given
+to each thread. 
+The calculation is simple by finding the number of bytes that need 
+to be in each part and then calculating the offset.
+Call the threads in background mode and then wait for them to finish.
+
+Parameters:
+url - the address of the file to be downloaded
+number_threads - user given number of threads for downloading the file
+
+Returns:
+If threads_failed = 0,  return download successful else delete the 
+return download failed and delete the incomplete outfile prepared
+by the threads.
+"""
 
 
 def download(url, number_threads):
     try:
         h = requests.head(url, timeout=10)
         header = h.headers
-        content_length = int(header.get('content-length', None))
+        content_length = int(header.get('content-length', None))  # size of the file
     except Exception:
         print("Connection to URL failed. Recheck internet connection or URL entered")
         return
+    # size of the file part each thread has to download and write
     parts = int(content_length/number_threads)
     outfile = url.split('/')[-1]
     f = open(outfile, 'wb')
-    f.write(b'\0'*content_length)
+    f.write(b'\0'*content_length)  # temp file with null characters created
     f.close()
 
-    threads = []
+    threads = []  # store the threads to be spawned
     print("Download starting")
     for i in range(number_threads):
+        # start and end store the offset and the end
         start = parts * i
         if i == (number_threads - 1):
             end = content_length
         else:
             end = start + parts - 1
+        # initialize and start the thread in background
         t = threading.Thread(target=thread_handler, args=(start, end, outfile, url), daemon=True)
         threads.append(t)
         t.start()
 
     for index, t in enumerate(threads):
-        t.join()
+        t.join()  # terminate and collect the threads after completion
 
     global threads_failed
-    if threads_failed == 0:
+    if threads_failed == 0:  # SUCCESSFUL
         print("Download successful : " + str(outfile))
-    else:
+    else:  # FAILURE
         os.remove(outfile)
         print("Download failed. Threads failed : " + str(threads_failed))
 
@@ -102,9 +145,9 @@ if __name__ == "__main__":
     url = sys.argv[1]
     try:
         number_threads = int(sys.argv[2])
-        if number_threads <= 0:
+        if number_threads <= 0:  # non positive numbers of thread
             print("Incorrect number of threads : " + str(number_threads))
         else:
             download(url, number_threads)
-    except ValueError:
+    except ValueError:  # non number value for thread
         print("Incorrect number of threads : " + sys.argv[2])
