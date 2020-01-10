@@ -1,0 +1,57 @@
+Some of the questions that were mentioned in the email
+are addressed below.
+
+1. Design choices
+The procedure of the downloader is simple and is summarized below:
+a) Make a get request to find the size of the data
+b) Based on the number of threads, find continuous non overlapping
+parts and allot each thread one part.
+c) Initiate the number of threads specified with their allotted parts
+and download the content through a get request and write to the outfile
+on the appropriate offset.
+d) Keep track of the failed threads due to timeout, if any one fails
+the entire download is considered to be failed.
+
+2. Internet Loss
+The timeout of 60s ensures that whenever a thread does not receive
+data for the interval, it fails and goes into a except clause. Thus
+during an internet failure, threads are automatically reported to
+be failed and the incomplete download file is deleted.
+
+3. Potential Improvements
+a) For each download the outfile is the filename from the url stored
+in the local directory of the downloader script, we can implement a
+feature to make copies of the downloads as Chrome does.
+b) In the case of SIGINT, SIGSTOP or SIGKILL by the user, the file
+is not deleted. Using signal handlers, I can handle these events in
+a better way.
+
+4. Scaling
+The key performance advantage is received through the use of threads in
+the downloads. They allow us to concurrently download and write specific
+non overlapping parts of the file.
+On the topic of threads, we are only able to take advantage of this
+concurrency because of multiple cores. On a single core, multiple threads
+would only hurt the performance as the clock cycles needed to download the
+file would remain the same and the overhead for switching the threads would
+actually bring the overall performance down.
+The speedup is only felt until a certain maximum number of threads, my
+opinion is that the threads begin to throttle and the switching overhead
+actually overcomes the benefit.
+
+Website : http://xcal1.vodafone.co.uk/
+Statistics : 5MB
+Threads : 5  Time : 46.39s
+Threads : 10 Time : 29.78s
+Threads : 50 Time : 12.05s
+Threads : 100 Time : 30.34s
+
+Statistics : 10MB
+Threads : 1 Time : 27.28s
+Threads : 50 Time : 22.93s
+
+5. Robustness
+I have tried to handle any corner cases that might arise because of the users.
+For the inputs to the script, any added parameters, incorrect number of threads
+and incorrect urls are checked and the program will terminate and give the
+user feedback on what went wrong.
